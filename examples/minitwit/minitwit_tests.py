@@ -5,7 +5,7 @@
 
     Tests the MiniTwit application.
 
-    :copyright: (c) 2010 by Armin Ronacher.
+    :copyright: (c) 2014 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 import os
@@ -20,7 +20,8 @@ class MiniTwitTestCase(unittest.TestCase):
         """Before each test, set up a blank database"""
         self.db_fd, minitwit.app.config['DATABASE'] = tempfile.mkstemp()
         self.app = minitwit.app.test_client()
-        minitwit.init_db()
+        with minitwit.app.app_context():
+            minitwit.init_db()
 
     def tearDown(self):
         """Get rid of the database again after each test."""

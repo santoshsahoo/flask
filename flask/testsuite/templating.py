@@ -5,7 +5,7 @@
 
     Template functionality
 
-    :copyright: (c) 2011 by Armin Ronacher.
+    :copyright: (c) 2014 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -294,6 +294,14 @@ class TemplatingTestCase(FlaskTestCase):
 
         rv = app.test_client().get('/')
         self.assert_equal(rv.data, b'<h1>Jameson</h1>')
+
+    def test_templates_auto_reload(self):
+        app = flask.Flask(__name__)
+        self.assert_true(app.config['TEMPLATES_AUTO_RELOAD'])
+        self.assert_true(app.jinja_env.auto_reload)
+        app = flask.Flask(__name__)
+        app.config['TEMPLATES_AUTO_RELOAD'] = False
+        self.assert_false(app.jinja_env.auto_reload)
 
 
 def suite():

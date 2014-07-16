@@ -6,7 +6,7 @@
     Implements test support helpers.  This module is lazily imported
     and usually not used in production environments.
 
-    :copyright: (c) 2011 by Armin Ronacher.
+    :copyright: (c) 2014 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 
@@ -31,6 +31,8 @@ def make_test_environ_builder(app, path='/', base_url=None, *args, **kwargs):
             base_url += app_root.lstrip('/')
         if url.netloc:
             path = url.path
+            if url.query:
+                path += '?' + url.query
     return EnvironBuilder(path, base_url, *args, **kwargs)
 
 

@@ -385,6 +385,15 @@ you are using Flask 0.10 which implies that:
         doSomethingWith({{ user.username|tojson|safe }});
     </script>
 
+.. admonition:: Auto-Sort JSON Keys
+
+    The configuration variable ``JSON_SORT_KEYS`` (:ref:`config`) can be
+    set to false to stop Flask from auto-sorting keys.  By default sorting
+    is enabled and outside of the app context sorting is turned on.
+
+    Notice that disabling key sorting can cause issues when using content
+    based HTTP caches and Python's hash randomization feature.
+
 .. autofunction:: jsonify
 
 .. autofunction:: dumps
@@ -588,7 +597,7 @@ Signals
       do nothing but will fail with a :exc:`RuntimeError` for all other
       operations, including connecting.
 
-.. _blinker: http://pypi.python.org/pypi/blinker
+.. _blinker: https://pypi.python.org/pypi/blinker
 
 Class-Based Views
 -----------------
@@ -744,3 +753,30 @@ Full example::
 
 .. versionadded:: 0.8
    The `provide_automatic_options` functionality was added.
+
+Command Line Interface
+----------------------
+
+.. currentmodule:: flask.cli
+
+.. autoclass:: FlaskGroup
+   :members:
+
+.. autoclass:: ScriptInfo
+   :members:
+
+.. autofunction:: pass_script_info
+
+.. autofunction:: without_appcontext
+
+.. autofunction:: script_info_option
+
+   A special decorator that informs a click callback to be passed the
+   script info object as first argument.  This is normally not useful
+   unless you implement very special commands like the run command which
+   does not want the application to be loaded yet.  This can be combined
+   with the :func:`without_appcontext` decorator.
+
+.. autodata:: run_command
+
+.. autodata:: shell_command

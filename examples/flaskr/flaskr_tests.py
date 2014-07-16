@@ -5,7 +5,7 @@
 
     Tests the Flaskr application.
 
-    :copyright: (c) 2010 by Armin Ronacher.
+    :copyright: (c) 2014 by Armin Ronacher.
     :license: BSD, see LICENSE for more details.
 """
 import os
@@ -21,7 +21,8 @@ class FlaskrTestCase(unittest.TestCase):
         self.db_fd, flaskr.app.config['DATABASE'] = tempfile.mkstemp()
         flaskr.app.config['TESTING'] = True
         self.app = flaskr.app.test_client()
-        flaskr.init_db()
+        with flaskr.app.app_context():
+            flaskr.init_db()
 
     def tearDown(self):
         """Get rid of the database again after each test."""

@@ -97,7 +97,7 @@ these::
      <Rule '/<page>' (HEAD, OPTIONS, GET) -> simple_page.show>,
      <Rule '/' (HEAD, OPTIONS, GET) -> simple_page.show>]
 
-The first one is obviously from the application ifself for the static
+The first one is obviously from the application itself for the static
 files.  The other two are for the `show` function of the ``simple_page``
 blueprint.  As you can see, they are also prefixed with the name of the
 blueprint and separated by a dot (``.``).
@@ -202,3 +202,18 @@ you can use relative redirects by prefixing the endpoint with a dot only::
 
 This will link to ``admin.index`` for instance in case the current request
 was dispatched to any other admin blueprint endpoint.
+
+Error Handlers
+--------------
+
+Blueprints support the errorhandler decorator just like the :class:`Flask`
+application object, so it is easy to make Blueprint-specific custom error
+pages.
+
+Here is an example for a "404 Page Not Found" exception::
+
+    @simple_page.errorhandler(404)
+    def page_not_found(e):
+        return render_template('pages/404.html')
+
+More information on error handling see :ref:`errorpages`.
