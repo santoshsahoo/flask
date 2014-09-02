@@ -167,8 +167,8 @@ class Config(dict):
 
     def from_json(self, filename, silent=False):
         """Updates the values in the config from a JSON file. This function
-        behaves as if the JSON object was a dictionary and passed ot the
-        :meth:`from_object` function.
+        behaves as if the JSON object was a dictionary and passed to the
+        :meth:`from_mapping` function.
 
         :param filename: the filename of the JSON file.  This can either be an
                          absolute filename or a filename relative to the
@@ -188,9 +188,29 @@ class Config(dict):
                 return False
             e.strerror = 'Unable to load configuration file (%s)' % e.strerror
             raise
-        for key in obj.keys():
-            if key.isupper():
-                self[key] = obj[key]
+        return self.from_mapping(obj)
+
+    def from_mapping(self, *mapping, **kwargs):
+        """Updates the config like :meth:`update` ignoring items with non-upper
+        keys.
+
+        .. versionadded:: 1.0
+        """
+        mappings = []
+        if len(mapping) == 1:
+            if hasattr(mapping[0], 'items'):
+                mappings.append(mapping[0].items())
+            else:
+                mappings.append(mapping[0])
+        elif len(mapping) > 1:
+            raise TypeError(
+                'expected at most 1 positional argument, got %d' % len(mapping)
+            )
+        mappings.append(kwargs.items())
+        for mapping in mappings:
+            for (key, value) in mapping:
+                if key.isupper():
+                    self[key] = value
         return True
 
     def get_namespace(self, namespace, lowercase=True):

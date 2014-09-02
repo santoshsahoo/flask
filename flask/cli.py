@@ -11,8 +11,8 @@
 
 import os
 import sys
-from threading import Lock
-from contextlib import contextmanager
+from threading import Lock, Thread
+from functools import update_wrapper
 
 import click
 
@@ -99,25 +99,46 @@ def locate_app(app_id):
 
 class DispatchingApp(object):
     """Special application that dispatches to a flask application which
-    is imported by name on first request.  This is safer than importing
-    the application upfront because it means that we can forward all
-    errors for import problems into the browser as error.
+    is imported by name in a background thread.  If an error happens
+    it is is recorded and shows as part of the WSGI handling which in case
+    of the Werkzeug debugger means that it shows up in the browser.
     """
 
     def __init__(self, loader, use_eager_loading=False):
         self.loader = loader
         self._app = None
         self._lock = Lock()
+        self._bg_loading_exc_info = None
         if use_eager_loading:
             self._load_unlocked()
+        else:
+            self._load_in_background()
+
+    def _load_in_background(self):
+        def _load_app():
+            with self._lock:
+                try:
+                    self._load_unlocked()
+                except Exception:
+                    self._bg_loading_exc_info = sys.exc_info()
+        t = Thread(target=_load_app, args=())
+        t.start()
+
+    def _flush_bg_loading_exception(self):
+        exc_info = self._bg_loading_exc_info
+        if exc_info is not None:
+            self._bg_loading_exc_info = None
+            raise exc_info[0], exc_info[1], exc_info[2]
 
     def _load_unlocked(self):
         self._app = rv = self.loader()
+        self._bg_loading_exc_info = None
         return rv
 
     def __call__(self, environ, start_response):
         if self._app is not None:
             return self._app(environ, start_response)
+        self._flush_bg_loading_exception()
         with self._lock:
             if self._app is not None:
                 rv = self._app
@@ -166,37 +187,28 @@ class ScriptInfo(object):
         self._loaded_app = rv
         return rv
 
-    @contextmanager
-    def conditional_context(self, with_context=True):
-        """Creates an application context or not, depending on the given
-        parameter but always works as context manager.  This is just a
-        shortcut for a common operation.
-        """
-        if with_context:
-            with self.load_app().app_context() as ctx:
-                yield ctx
-        else:
-            yield None
+
+pass_script_info = click.make_pass_decorator(ScriptInfo, ensure=True)
 
 
-pass_script_info = click.make_pass_decorator(ScriptInfo)
-
-
-def without_appcontext(f):
-    """Marks a click callback so that it does not get a app context
-    created.  This only works for commands directly registered to
-    the toplevel system.  This really is only useful for very
-    special commands like the runserver one.
+def with_appcontext(f):
+    """Wraps a callback so that it's guaranteed to be executed with the
+    script's application context.  If callbacks are registered directly
+    to the ``app.cli`` object then they are wrapped with this function
+    by default unless it's disabled.
     """
-    f.__flask_without_appcontext__ = True
-    return f
+    @click.pass_context
+    def decorator(__ctx, *args, **kwargs):
+        with __ctx.ensure_object(ScriptInfo).load_app().app_context():
+            return __ctx.invoke(f, *args, **kwargs)
+    return update_wrapper(decorator, f)
 
 
-def set_debug_value(ctx, value):
+def set_debug_value(ctx, param, value):
     ctx.ensure_object(ScriptInfo).debug = value
 
 
-def set_app_value(ctx, value):
+def set_app_value(ctx, param, value):
     if value is not None:
         if os.path.isfile(value):
             value = prepare_exec_for_file(value)
@@ -215,12 +227,41 @@ app_option = click.Option(['-a', '--app'],
     callback=set_app_value, is_eager=True)
 
 
-class FlaskGroup(click.Group):
-    """Special subclass of the a regular click group that supports loading
-    more commands from the configured Flask app.  Normally a developer
-    does not have to interface with this class but there are some very
-    advanced usecases for which it makes sense to create an instance of
-    this.
+class AppGroup(click.Group):
+    """This works similar to a regular click :class:`~click.Group` but it
+    changes the behavior of the :meth:`command` decorator so that it
+    automatically wraps the functions in :func:`with_appcontext`.
+
+    Not to be confused with :class:`FlaskGroup`.
+    """
+
+    def command(self, *args, **kwargs):
+        """This works exactly like the method of the same name on a regular
+        :class:`click.Group` but it wraps callbacks in :func:`with_appcontext`
+        unless it's disabled by passing ``with_appcontext=False``.
+        """
+        wrap_for_ctx = kwargs.pop('with_appcontext', True)
+        def decorator(f):
+            if wrap_for_ctx:
+                f = with_appcontext(f)
+            return click.Group.command(self, *args, **kwargs)(f)
+        return decorator
+
+    def group(self, *args, **kwargs):
+        """This works exactly like the method of the same name on a regular
+        :class:`click.Group` but it defaults the group class to
+        :class:`AppGroup`.
+        """
+        kwargs.setdefault('cls', AppGroup)
+        return click.Group.group(self, *args, **kwargs)
+
+
+class FlaskGroup(AppGroup):
+    """Special subclass of the the :class:`AppGroup` group that supports
+    loading more commands from the configured Flask app.  Normally a
+    developer does not have to interface with this class but there are
+    some very advanced usecases for which it makes sense to create an
+    instance of this.
 
     For information as of why this is useful see :ref:`custom-scripts`.
 
@@ -244,7 +285,7 @@ class FlaskGroup(click.Group):
         if add_debug_option:
             params.append(debug_option)
 
-        click.Group.__init__(self, params=params, **extra)
+        AppGroup.__init__(self, params=params, **extra)
         self.create_app = create_app
 
         if add_default_commands:
@@ -259,7 +300,7 @@ class FlaskGroup(click.Group):
         #
         # This also means that the script stays functional in case the
         # application completely fails.
-        rv = click.Group.get_command(self, ctx, name)
+        rv = AppGroup.get_command(self, ctx, name)
         if rv is not None:
             return rv
 
@@ -286,21 +327,13 @@ class FlaskGroup(click.Group):
             pass
         return sorted(rv)
 
-    def invoke_subcommand(self, ctx, cmd, cmd_name, args):
-        with_context = cmd.callback is None or \
-           not getattr(cmd.callback, '__flask_without_appcontext__', False)
-
-        with ctx.find_object(ScriptInfo).conditional_context(with_context):
-            return click.Group.invoke_subcommand(
-                self, ctx, cmd, cmd_name, args)
-
     def main(self, *args, **kwargs):
         obj = kwargs.get('obj')
         if obj is None:
             obj = ScriptInfo(create_app=self.create_app)
         kwargs['obj'] = obj
         kwargs.setdefault('auto_envvar_prefix', 'FLASK')
-        return click.Group.main(self, *args, **kwargs)
+        return AppGroup.main(self, *args, **kwargs)
 
 
 def script_info_option(*args, **kwargs):
@@ -319,7 +352,7 @@ def script_info_option(*args, **kwargs):
         raise TypeError('script_info_key not provided.')
 
     real_callback = kwargs.get('callback')
-    def callback(ctx, value):
+    def callback(ctx, param, value):
         if real_callback is not None:
             value = real_callback(ctx, value)
         ctx.ensure_object(ScriptInfo).data[key] = value
@@ -346,7 +379,6 @@ def script_info_option(*args, **kwargs):
               'loading is enabled if the reloader is disabled.')
 @click.option('--with-threads/--without-threads', default=False,
               help='Enable or disable multithreading.')
-@without_appcontext
 @pass_script_info
 def run_command(info, host, port, reload, debugger, eager_loading,
                 with_threads):
@@ -388,6 +420,7 @@ def run_command(info, host, port, reload, debugger, eager_loading,
 
 
 @click.command('shell', short_help='Runs a shell in the app context.')
+@with_appcontext
 def shell_command():
     """Runs an interactive Python shell in the context of a given
     Flask application.  The application will populate the default
@@ -406,7 +439,18 @@ def shell_command():
         app.debug and ' [debug]' or '',
         app.instance_path,
     )
-    code.interact(banner=banner, local=app.make_shell_context())
+    ctx = {}
+
+    # Support the regular Python interpreter startup script if someone
+    # is using it.
+    startup = os.environ.get('PYTHONSTARTUP')
+    if startup and os.path.isfile(startup):
+        with open(startup, 'r') as f:
+            eval(compile(f.read(), startup, 'exec'), ctx)
+
+    ctx.update(app.make_shell_context())
+
+    code.interact(banner=banner, local=ctx)
 
 
 cli = FlaskGroup(help="""\

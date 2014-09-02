@@ -559,6 +559,7 @@ class BasicFunctionalityTestCase(FlaskTestCase):
     def test_teardown_request_handler_error(self):
         called = []
         app = flask.Flask(__name__)
+        app.config['LOGGER_HANDLER_POLICY'] = 'never'
         @app.teardown_request
         def teardown_request1(exc):
             self.assert_equal(type(exc), ZeroDivisionError)
@@ -621,6 +622,7 @@ class BasicFunctionalityTestCase(FlaskTestCase):
 
     def test_error_handling(self):
         app = flask.Flask(__name__)
+        app.config['LOGGER_HANDLER_POLICY'] = 'never'
         @app.errorhandler(404)
         def not_found(e):
             return 'not found', 404
@@ -920,6 +922,7 @@ class BasicFunctionalityTestCase(FlaskTestCase):
 
     def test_none_response(self):
         app = flask.Flask(__name__)
+        app.testing = True
         @app.route('/')
         def test():
             return None
@@ -989,6 +992,7 @@ class BasicFunctionalityTestCase(FlaskTestCase):
     def test_exception_propagation(self):
         def apprunner(configkey):
             app = flask.Flask(__name__)
+            app.config['LOGGER_HANDLER_POLICY'] = 'never'
             @app.route('/')
             def index():
                 1 // 0
@@ -996,7 +1000,7 @@ class BasicFunctionalityTestCase(FlaskTestCase):
             if config_key is not None:
                 app.config[config_key] = True
                 try:
-                    resp = c.get('/')
+                    c.get('/')
                 except Exception:
                     pass
                 else:
@@ -1301,18 +1305,6 @@ class SubdomainTestCase(FlaskTestCase):
         rv = c.get('/', 'http://test.localhost/')
         self.assert_equal(rv.data, b'test index')
 
-    @emits_module_deprecation_warning
-    def test_module_static_path_subdomain(self):
-        app = flask.Flask(__name__)
-        app.config['SERVER_NAME'] = 'example.com'
-        from subdomaintestmodule import mod
-        app.register_module(mod)
-        c = app.test_client()
-        rv = c.get('/static/hello.txt', 'http://foo.example.com/')
-        rv.direct_passthrough = False
-        self.assert_equal(rv.data.strip(), b'Hello Subdomain')
-        rv.close()
-
     def test_subdomain_matching(self):
         app = flask.Flask(__name__)
         app.config['SERVER_NAME'] = 'localhost'
@@ -1334,28 +1326,6 @@ class SubdomainTestCase(FlaskTestCase):
         c = app.test_client()
         rv = c.get('/', 'http://mitsuhiko.localhost:3000/')
         self.assert_equal(rv.data, b'index for mitsuhiko')
-
-    @emits_module_deprecation_warning
-    def test_module_subdomain_support(self):
-        app = flask.Flask(__name__)
-        mod = flask.Module(__name__, 'test', subdomain='testing')
-        app.config['SERVER_NAME'] = 'localhost'
-
-        @mod.route('/test')
-        def test():
-            return 'Test'
-
-        @mod.route('/outside', subdomain='xtesting')
-        def bar():
-            return 'Outside'
-
-        app.register_module(mod)
-
-        c = app.test_client()
-        rv = c.get('/test', 'http://testing.localhost/')
-        self.assert_equal(rv.data, b'Test')
-        rv = c.get('/outside', 'http://xtesting.localhost/')
-        self.assert_equal(rv.data, b'Outside')
 
     def test_multi_route_rules(self):
         app = flask.Flask(__name__)

@@ -11,7 +11,6 @@
 
 import os
 import sys
-import click
 from threading import Lock
 from datetime import timedelta
 from itertools import chain
@@ -24,13 +23,12 @@ from werkzeug.exceptions import HTTPException, InternalServerError, \
 
 from .helpers import _PackageBoundObject, url_for, get_flashed_messages, \
      locked_cached_property, _endpoint_from_view_func, find_package
-from . import json
+from . import json, cli
 from .wrappers import Request, Response
 from .config import ConfigAttribute, Config
 from .ctx import RequestContext, AppContext, _AppCtxGlobals
 from .globals import _request_ctx_stack, request, session, g
 from .sessions import SecureCookieSessionInterface
-from .module import blueprint_is_module
 from .templating import DispatchingJinjaLoader, Environment, \
      _default_template_ctx_processor
 from .signals import request_started, request_finished, got_request_exception, \
@@ -85,7 +83,7 @@ class Flask(_PackageBoundObject):
 
     .. admonition:: About the First Parameter
 
-        The idea of the first parameter is to give Flask an idea what
+        The idea of the first parameter is to give Flask an idea of what
         belongs to your application.  This name is used to find resources
         on the file system, can be used by extensions to improve debugging
         information and a lot more.
@@ -256,23 +254,6 @@ class Flask(_PackageBoundObject):
     #: .. versionadded:: 0.4
     logger_name = ConfigAttribute('LOGGER_NAME')
 
-    #: Enable the deprecated module support?  This is active by default
-    #: in 0.7 but will be changed to False in 0.8.  With Flask 1.0 modules
-    #: will be removed in favor of Blueprints
-    enable_modules = True
-
-    #: The logging format used for the debug logger.  This is only used when
-    #: the application is in debug mode, otherwise the attached logging
-    #: handler does the formatting.
-    #:
-    #: .. versionadded:: 0.3
-    debug_log_format = (
-        '-' * 80 + '\n' +
-        '%(levelname)s in %(module)s [%(pathname)s:%(lineno)d]:\n' +
-        '%(message)s\n' +
-        '-' * 80
-    )
-
     #: The JSON encoder class to use.  Defaults to :class:`~flask.json.JSONEncoder`.
     #:
     #: .. versionadded:: 0.10
@@ -298,6 +279,7 @@ class Flask(_PackageBoundObject):
         'PERMANENT_SESSION_LIFETIME':           timedelta(days=31),
         'USE_X_SENDFILE':                       False,
         'LOGGER_NAME':                          None,
+        'LOGGER_HANDLER_POLICY':               'always',
         'SERVER_NAME':                          None,
         'APPLICATION_ROOT':                     None,
         'SESSION_COOKIE_NAME':                  'session',
@@ -544,7 +526,7 @@ class Flask(_PackageBoundObject):
         #: provided by Flask itself and can be overridden.
         #:
         #: This is an instance of a :class:`click.Group` object.
-        self.cli = click.Group(self)
+        self.cli = cli.AppGroup(self)
 
     def _get_error_handlers(self):
         from warnings import warn
@@ -904,32 +886,6 @@ class Flask(_PackageBoundObject):
         .. versionadded:: 0.7
         """
         return self.session_interface.make_null_session(self)
-
-    def register_module(self, module, **options):
-        """Registers a module with this application.  The keyword arguments
-        of this function are the same as the ones for the constructor of the
-        :class:`Module` class and will override the values of the module if
-        provided.
-
-        .. versionchanged:: 0.7
-           The module system was deprecated in favor for the blueprint
-           system.
-        """
-        assert blueprint_is_module(module), 'register_module requires ' \
-            'actual module objects.  Please upgrade to blueprints though.'
-        if not self.enable_modules:
-            raise RuntimeError('Module support was disabled but code '
-                'attempted to register a module named %r' % module)
-        else:
-            from warnings import warn
-            warn(DeprecationWarning('Modules are deprecated.  Upgrade to '
-                'using blueprints.  Have a look into the documentation for '
-                'more information.  If this module was registered by a '
-                'Flask-Extension upgrade the extension or contact the author '
-                'of that extension instead.  (Registered %r)' % module),
-                stacklevel=2)
-
-        self.register_blueprint(module, **options)
 
     @setupmethod
     def register_blueprint(self, blueprint, **options):

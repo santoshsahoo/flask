@@ -131,17 +131,6 @@ This will pull in the dependencies and activate the git head as the current
 version inside the virtualenv.  Then all you have to do is run ``git pull
 origin`` to update to the latest version.
 
-To just get the development version without git, do this instead::
-
-    $ mkdir flask
-    $ cd flask
-    $ virtualenv venv
-    $ . venv/bin/activate
-    New python executable in venv/bin/python
-    Installing setuptools, pip............done.
-    $ pip install Flask==dev
-    ...
-    Finished processing dependencies for Flask==dev
 
 .. _windows-easy-install:
 
@@ -180,8 +169,8 @@ check that you can now just type ``python`` to bring up the interpreter.
 Finally, to install `virtualenv`_, you can simply run::
 
     > pip install virtualenv
-    
+
 Then you can be off on your way following the installation instructions above.
 
-.. _get-pip.py: https://raw.github.com/pypa/pip/master/contrib/get-pip.py
+.. _get-pip.py: https://raw.githubusercontent.com/pypa/pip/master/contrib/get-pip.py
 .. _ez_setup.py: https://bitbucket.org/pypa/setuptools/raw/bootstrap/ez_setup.py
